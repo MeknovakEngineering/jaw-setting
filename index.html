@@ -1550,25 +1550,36 @@ const recName=r=>(["Jaw",r.cust,r.mach,(VAR[r.v]||{}).name,r.pkg==="B"?"200B":"2
 async function gPut(r,fold){const body=JSON.stringify(Object.assign({},r,{sync:true,fileId:undefined,_mt:undefined}));
   if(r.fileId){const u=await gFetch(`https://www.googleapis.com/upload/drive/v3/files/${r.fileId}?uploadType=media&fields=id,modifiedTime`,{method:"PATCH",headers:{"Content-Type":"application/json"},body});
     if(u.ok){const j=await u.json();r._mt=j.modifiedTime;await gFetch(`https://www.googleapis.com/drive/v3/files/${r.fileId}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:recName(r)})});return;}r.fileId=null;}
+  const q=encodeURIComponent(`appProperties has { key='recId' and value='${r.id}' } and trashed=false`);
+  const ex=await (await gFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)&spaces=drive`)).json();
+  if(ex.files&&ex.files.length){r.fileId=ex.files[0].id;return gPut(r,fold);}
   const meta={name:recName(r),parents:[fold],mimeType:"application/json",appProperties:{jawrec:"1",recId:r.id}},b="jawb"+Date.now();
   const mp=`--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${b}\r\nContent-Type: application/json\r\n\r\n${body}\r\n--${b}--`;
   const c=await gFetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,modifiedTime",{method:"POST",headers:{"Content-Type":"multipart/related; boundary="+b},body:mp});
   const j=await c.json();r.fileId=j.id;r._mt=j.modifiedTime;}
 /* g\u00f6nder (bekleyenler + silinenler), sonra Drive'daki listeyi al: Drive ana kaynak */
-async function gSync(interactive){if(GD.busy)return;GD.busy=true;GD.err="";GD.msg="senkronize ediliyor\u2026";gBadge();
+async function gSync(interactive){if(GD.busy){GD.again=true;return;}GD.busy=true;GD.again=false;GD.err="";GD.msg="senkronize ediliyor\u2026";gBadge();
   try{if(!(await gAuth(interactive))){GD.msg="";return;}const fold=await gFolder();
     for(const fid of DELQ.slice()){try{await gFetch(`https://www.googleapis.com/drive/v3/files/${fid}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({trashed:true})});}catch(e){if(e.auth)throw e;}DELQ=DELQ.filter(x=>x!==fid);delqSave();}
     for(const r of REC.filter(r=>!r.sync)){await gPut(r,fold);r.sync=true;locSave();}
     const q=encodeURIComponent("appProperties has { key='jawrec' and value='1' } and trashed=false");let files=[],pt="";
     do{const l=await (await gFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=nextPageToken,files(id,modifiedTime,appProperties)&pageSize=1000&spaces=drive${pt?"&pageToken="+pt:""}`)).json();files=files.concat(l.files||[]);pt=l.nextPageToken||"";}while(pt);
-    const byId=new Map(REC.map(r=>[r.id,r])),out=[];
-    for(const f of files){const rid=f.appProperties&&f.appProperties.recId;let r=rid&&byId.get(rid);
-      if(!r||r._mt!==f.modifiedTime||r.fileId!==f.id){const d=await (await gFetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`)).json();r=Object.assign(d,{fileId:f.id,_mt:f.modifiedTime,sync:true});}
-      out.push(r);}
+    files.sort((a,b)=>a.modifiedTime<b.modifiedTime?1:-1);/* en yeni \u00f6nce */
+    const byId=new Map(REC.map(r=>[r.id,r])),out=[],seenId=new Set(),seenSig=new Set(),dup=[];
+    const sig=r=>[normS(r.cust),normS(r.mach),r.date,r.v,r.pkg,JSON.stringify((r.hist||[]).map(x=>[x.id,x.st,x.inp]))].join("|");
+    for(const f of files){const rid=f.appProperties&&f.appProperties.recId;
+      if(rid&&seenId.has(rid)){dup.push(f.id);continue;}
+      let r=rid&&byId.get(rid);
+      if(r&&!r.sync){r.fileId=r.fileId||f.id;}
+      else if(!r||r._mt!==f.modifiedTime||r.fileId!==f.id){const d=await (await gFetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`)).json();r=Object.assign(d,{fileId:f.id,_mt:f.modifiedTime,sync:true});}
+      const sg=sig(r);if(seenSig.has(sg)){dup.push(f.id);continue;}
+      seenId.add(r.id);seenSig.add(sg);out.push(r);}
     REC.filter(r=>!r.sync&&!out.some(x=>x.id===r.id)).forEach(r=>out.push(r));
+    for(const fid of dup){try{await gFetch(`https://www.googleapis.com/drive/v3/files/${fid}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({trashed:true})});}catch(e){if(e.auth)throw e;}}
+    if(out.some(r=>!r.sync))GD.again=true;
     REC=out;locSave();GD.msg="Drive ile g\u00fcncel \u00b7 "+new Date().toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"});
   }catch(e){GD.err=e.auth?"Drive'a ba\u011flan":"senkronizasyon hatas\u0131: "+e.message;GD.msg="";}
-  finally{GD.busy=false;gBadge();refreshStore();}}
+  finally{GD.busy=false;gBadge();refreshStore();if(GD.again&&gTok()&&!GD.err){GD.again=false;setTimeout(()=>gSync(false),50);}}}
 function gBadge(){const b=document.getElementById("btnDrive");if(!b)return;if(!GD_ON){b.hidden=true;return;}b.hidden=false;
   const pend=REC.filter(r=>!r.sync).length+DELQ.length,ok=!!gTok();
   const sh=document.body.classList.contains("compact")&&window.innerWidth<700;
