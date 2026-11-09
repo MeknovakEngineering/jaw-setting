@@ -21,6 +21,18 @@ header{background:#0f2a44;color:#fff;padding:10px 16px;position:sticky;top:env(s
 .pkg button.on{background:#fff;color:#0f2a44}
 .hbtn.warn{background:#f59e0b;border-color:#f59e0b;color:#111}
 .hbtn{background:#ffffff1a;color:#fff;border:1px solid #ffffff44;border-radius:8px;padding:7px 11px;cursor:pointer;font-size:13px}
+body.compact #infoCard,body.compact #varSel,body.compact #pkgSel{display:none}
+.brand .bsum{display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+body.compact header{padding:7px 16px}
+body.compact .brand{font-size:15px;min-width:0;flex:1 1 auto}
+@media(max-width:860px){
+  header{position:static}
+  body.compact header{position:sticky;padding:6px 10px}
+  body.compact .hrow{flex-wrap:nowrap;gap:6px}
+  body.compact .hbtn{padding:6px 8px;font-size:12.5px;white-space:nowrap;flex:0 0 auto}
+  body.compact #btnReset{display:none}
+  body.compact .hbtn .lg{display:none}
+}
 .wrap{max-width:1200px;margin:0 auto;padding:14px 16px 40px;display:grid;grid-template-columns:260px 1fr;gap:16px}
 @media(max-width:860px){.wrap{grid-template-columns:1fr}.side{order:2}}
 .side,.card{background:var(--card);border:1px solid var(--line);border-radius:12px}
@@ -224,9 +236,10 @@ body.sum #hist,body.isdone #hist{display:none}
     <div class="pkg" id="pkgSel">
       <button data-p="S">200 Slim</button><button data-p="B">200 Base</button>
     </div>
+    <button class="hbtn" id="btnInfo" hidden>&#x270e; Bilgiler</button>
     <button class="hbtn" id="btnDrive" hidden>Drive</button>
     <button class="hbtn" id="btnHist">Ge&#xe7;mi&#x15f;</button>
-    <button class="hbtn" id="btnSum">&#xd6;zet / PDF</button>
+    <button class="hbtn" id="btnSum"><span class="lg">&#xd6;zet / </span>PDF</button>
     <button class="hbtn" id="btnReset">S&#x131;f&#x131;rla</button>
   </div>
 </header>
@@ -238,7 +251,7 @@ body.sum #hist,body.isdone #hist{display:none}
     <ul class="seq" id="seq"></ul>
   </aside>
   <main>
-    <div class="card noprint">
+    <div class="card noprint" id="infoCard">
       <div class="infogrid">
         <div><label>M&#xfc;&#x15f;teri / Fabrika</label><input type="text" id="i_cust" list="dlCust" autocomplete="off"><datalist id="dlCust"></datalist></div>
         <div><label>Makine no</label><input type="text" id="i_mach" list="dlMach" autocomplete="off"><datalist id="dlMach"></datalist></div>
@@ -1342,7 +1355,12 @@ function render(){VIEW="main";PREV=prevFor(S);fillLists();
   document.body.classList.remove("sum");document.body.classList.toggle("isdone",S.cur==="done");
   document.querySelectorAll("#pkgSel button").forEach(b=>b.classList.toggle("on",b.dataset.p===S.pkg));
   document.querySelectorAll("#varSel button").forEach(b=>b.classList.toggle("on",b.dataset.v===S.v));
-  document.getElementById("brandSub").textContent=V().name+" \u00b7 "+V().doc+" \u00b7 jaw system setting sequence";
+  {const started=S.hist.length>0,compact=started&&!S.flags.infoOpen;document.body.classList.toggle("compact",compact);
+   const bi=document.getElementById("btnInfo");bi.hidden=!started;bi.textContent=compact?"\u270e Bilgiler":"\u25b2 Gizle";
+   const br=document.getElementById("brand");
+   if(compact){const sm=[V().name,P().code,S.info.cust,S.info.mach].filter(Boolean).map(x=>esc(String(x).trim())).join(" \u00b7 ");br.innerHTML=`<span class="bsum">${sm}</span>`;br.title=sm;}
+   else br.innerHTML=`TBA Jaw Setting<small id="brandSub">${esc(V().name+" \u00b7 "+V().doc+" \u00b7 jaw system setting sequence")}</small>`;
+   gBadge();}
   // sequence sidebar
   const seq=document.getElementById("seq");
   seq.innerHTML=MS().map((id,i)=>{const done=i<S.mainIdx,cur=i===S.mainIdx;
@@ -1553,7 +1571,9 @@ async function gSync(interactive){if(GD.busy)return;GD.busy=true;GD.err="";GD.ms
   finally{GD.busy=false;gBadge();refreshStore();}}
 function gBadge(){const b=document.getElementById("btnDrive");if(!b)return;if(!GD_ON){b.hidden=true;return;}b.hidden=false;
   const pend=REC.filter(r=>!r.sync).length+DELQ.length,ok=!!gTok();
-  b.textContent=GD.busy?"Drive: senkronize\u2026":!ok?"Drive'a ba\u011flan"+(pend?` (${pend} bekliyor)`:""):pend?`Drive: ${pend} bekliyor`:"Drive \u2713";
+  const sh=document.body.classList.contains("compact")&&window.innerWidth<700;
+  b.textContent=sh?(GD.busy?"Drive\u2026":!ok?"Drive \u26a0"+(pend?" "+pend:""):pend?"Drive "+pend:"Drive \u2713")
+    :GD.busy?"Drive: senkronize\u2026":!ok?"Drive'a ba\u011flan"+(pend?` (${pend} bekliyor)`:""):pend?`Drive: ${pend} bekliyor`:"Drive \u2713";
   b.classList.toggle("warn",!ok||!!pend);b.title=GD.err||GD.msg||"";}
 function storeLabel(){if(GD_ON)return gTok()?"Kay\u0131tlar ortak Google Drive klas\u00f6r\u00fcnde (JawSetting_Kayitlar) \u2014 ekipteki herkes ayn\u0131 listeyi g\u00f6r\u00fcr."+(GD.msg?" "+GD.msg+".":""):"Drive'a ba\u011fl\u0131 de\u011fil \u2014 kay\u0131tlar \u015fimdilik bu telefonda bekliyor. \u00dcstteki \"Drive'a ba\u011flan\" ile g\u00f6nder.";
   return STORE.col?"Kay\u0131tlar Claude hesab\u0131nda tutuluyor \u2014 bu linki telefonda ve bilgisayarda a\u00e7\u0131nca ayn\u0131 liste gelir.":"Kay\u0131tlar bu cihazdaki taray\u0131c\u0131da tutuluyor.";}
@@ -1683,6 +1703,7 @@ function fitPrev(){const b=document.getElementById("sprev");if(!b)return;const s
 window.addEventListener("resize",fitPrev);
 document.getElementById("btnSum").onclick=showSum;
 document.getElementById("btnHist").onclick=showHist;
+document.getElementById("btnInfo").onclick=()=>{S.flags.infoOpen=!S.flags.infoOpen;save();render();window.scrollTo({top:0});};
 document.getElementById("btnDrive").onclick=()=>gSync(true);
 
 load();
